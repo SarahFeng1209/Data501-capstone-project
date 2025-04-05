@@ -1,9 +1,6 @@
 ### using R 4.4.3 and RStudio 2024.12.1-563
 
 # Install packages
-install.packages("forecast")
-install.packages("tseries")
-install.packages("vars")
 install.packages("readxl")
 install.packages("lme4")
 install.packages("tidyverse")
@@ -16,9 +13,6 @@ install.packages("sjPlot")
 
 # Load packages
 library(tidyverse) # for data cleaning and manipulation
-library(forecast)
-library(tseries) 
-library(vars) # for VAR model
 library(readxl) # for reading xlsx files
 library(summarytools) # to obtain frequency tables when checking for numbers and number of categories for a variable (column)
 library(lme4) # for multilevel regression model
@@ -26,6 +20,7 @@ library(psych) # for correlation analysis
 library(ggpubr) # for visualizing correlation
 library(sjPlot) # to print regression model in a table
 library(car) # for Levene's test (test of homogeneity of variance)
+library(MASS) # for Box-Cox transformation
 
 
 # Display as many decimal places as possible
@@ -186,16 +181,9 @@ cpi_main <- read.csv("C:/Users/user/Desktop/UofC/W25/DATA 501/Data analysis/cpi_
 cpi_main <- cpi_main %>% dplyr::select(-X)
 
 
-## Now let's answer our RQs ##
 
 
 # RQ3: How does inflation rate fluctuate, and whether the fluctuation varies across the 3 periods relative to the COVID-19 pandemic?  
-# summary(lm(CPI.median ~ covid, data = cpi_main))
-# # 1. All 3 COVID periods significantly predict change in inflation rate (p < 0.05)
-# # 2. R-squared = 0.5606, meaning that 56% of variation in inflation rate can be explained by COVID periods
-# # 3. Post-COVID has higher CPI median comparing to COVID, meaning inflation rate was the highest post-COVID
-# # 4. Pre-COVID has lower CPI median relative to COVID, meaning inflation rate was the lowest pre-COVID
-
 
 #### ANOVA ####
 
@@ -294,7 +282,7 @@ ggplot(data = cpi_main, aes(x = B..Revenues, y = CPI.median^(-1.5))) +
 
 
 # First, visualization (also available in EDA)
-ggplot(data = cpi_main, aes(x = REF_DATE, y = Increased.housing.price.ratio, color = covid)) + geom_point() + 
+ggplot(data = cpi_main, aes(x = REF_DATE, y = Increased.housing.price.ratio, color = covid, group = covid)) + geom_point() + 
   xlab("Month") + ylab("Increase in Housing Price Index Comparing to December 2016") + 
   ggtitle("Trend of Increase in Housing Price Index by Month") + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
@@ -516,7 +504,6 @@ deaths_model_log <- lm(log(CPI.median) ~ Deaths, data = cpi_main)
 bptest(deaths_model_log) # p-value is still less than 0.05
 
 # Box-Cox transformation to determine the best power transformation
-library(MASS)
 boxcox(deaths_model, lambda = seq(-6, 2, by = 1)) # lambda = -2 is the best
 
 # New boxcox model
@@ -603,7 +590,7 @@ ggplot(cpi_main, aes(x = Immigrants, y = CPI.median)) +
 
 
 
-# RQ7: What is the relatiimmigrants_model# RQ7: What is the relationship between housing price trends and population growth, and how do they influence each other? 
+# RQ7: What is the relationship between housing price trends and population growth, and how do they influence each other? 
 summary(lm(Increased.housing.price.ratio ~ Births + Deaths + Emigrants + Immigrants, data = cpi_main))
 # None of the population components is predictive of increase in housing price ratio
 
@@ -788,7 +775,7 @@ ggplot(duringcovid, aes(x = Unleaded.gas.prices, y = CPI.median)) +
   geom_point() +
   geom_smooth(method = "lm", color = "blue") + 
   xlab("Regular Unleaded Gasoline Price (in Cents per Litre)") + ylab("CPI") +
-  ggtitle("Predicted CPI by Regular Unleaded Gasoline Price")
+  ggtitle("Predicted CPI by Regular Unleaded Gasoline Price during COVID")
 
 
 ######## ######## 
@@ -1025,6 +1012,8 @@ shapiro.test(gas_prices_cpi$CPI.median) # p < 0.05, reject null hypothesis
 # Assumption 2: Linear relationship
 ggscatter(gas_prices_cpi, x = "VALUE", y = "CPI.median",
           add = "reg.line", conf.int = TRUE,
+          add.params = list(color = "blue"),
+          size = 1,
           cor.coef = TRUE, cor.method = "spearman",
           xlab = "Gas prices (in Cents per Litre)", ylab = "CPI median", title = "Correlation between Gas prices and CPI median")
 # From the graph, the relationship is linear, assumption 2 is met
@@ -1053,6 +1042,7 @@ shapiro.test(diesel_cpi$VALUE) # p < 0.05, fail to reject null hypothesis
 # Assumption 2: Linear relationship
 ggscatter(diesel_cpi, x = "VALUE", y = "CPI.median",
           add = "reg.line", conf.int = TRUE,
+          add.params = list(color = "blue"),
           cor.coef = TRUE, cor.method = "pearson",
           xlab = "Diesel prices (in Cents per Litre)", ylab = "CPI median", title = "Correlation between Diesel prices and CPI median")
 # From the graph, the relationship is linear, assumption 2 is met
@@ -1081,6 +1071,7 @@ shapiro.test(household_heating_fuel_cpi$VALUE) # p < 0.05, fail to reject null h
 # Assumption 2: Linear relationship
 ggscatter(household_heating_fuel_cpi, x = "VALUE", y = "CPI.median",
           add = "reg.line", conf.int = TRUE,
+          add.params = list(color = "blue"),
           cor.coef = TRUE, cor.method = "pearson",
           xlab = "Household heating fuel expense (in Cents per Litre)", ylab = "CPI median", title = "Correlation between Household heating fuel expenses and CPI median")
 # From the graph, the relationship is linear, assumption 2 is met
@@ -1123,7 +1114,6 @@ summary(lm(VALUE ~ Province*CPI.median, household_heating_fuel_cpi))
 # this means that HFCE are dependent on inflation rate in these provinces
 # NOTE: HFCE data is not available for Alberta in StatsCan's database
 # R-squared = 0.8423, meaning 84% of variation in diesel prices can be explained by both inflation rate and province, along with their interaction effects
-
 
 #####################
 
