@@ -25,6 +25,7 @@ library(lme4) # for multilevel regression model
 library(psych) # for correlation analysis
 library(ggpubr) # for visualizing correlation
 library(sjPlot) # to print regression model in a table
+library(car) # for Levene's test (test of homogeneity of variance)
 
 
 # Display as many decimal places as possible
@@ -172,6 +173,794 @@ cpi_main <- cpi_combined4
 write.csv(cpi_main, "C:/Users/User/Desktop/UofC/W25/DATA 501/Data analysis/cpi_main.csv")
 
 
+  
+
+
+
+############## Research Questions ############## 
+
+# Call the cpi_main data frame
+cpi_main <- read.csv("C:/Users/user/Desktop/UofC/W25/DATA 501/Data analysis/cpi_main.csv")
+
+# Take out the first column
+cpi_main <- cpi_main %>% dplyr::select(-X)
+
+
+## Now let's answer our RQs ##
+
+
+# RQ3: How does inflation rate fluctuate, and whether the fluctuation varies across the 3 periods relative to the COVID-19 pandemic?  
+# summary(lm(CPI.median ~ covid, data = cpi_main))
+# # 1. All 3 COVID periods significantly predict change in inflation rate (p < 0.05)
+# # 2. R-squared = 0.5606, meaning that 56% of variation in inflation rate can be explained by COVID periods
+# # 3. Post-COVID has higher CPI median comparing to COVID, meaning inflation rate was the highest post-COVID
+# # 4. Pre-COVID has lower CPI median relative to COVID, meaning inflation rate was the lowest pre-COVID
+
+
+#### ANOVA ####
+
+# Check assumptions of ANOVA
+
+# Normality
+by(cpi_main$CPI.median, cpi_main$covid, shapiro.test)
+# p-values < 0.05 for all 3 COVID periods, assumption of normality is not met
+# H0: Data is normally distributed
+# Ha: Data is not normally distributed
+
+# Homoscedasticity
+leveneTest(CPI.median ~ covid, data = cpi_main)
+# p-value < 0.05, assumption of equal variance is not met
+# H0: equal variances in data
+# Ha: unequal variances in data
+
+# Since both assumptions are not met, a non-parametric test is used instead of ANOVA
+
+# Kruskal-Wallis test
+kruskal.test(CPI.median ~ covid, data = cpi_main)
+# Test-statistic = 43.818, degrees of freedom = 2, p < 0.001
+# This means that inflation rate differs significantly across the 3 COVID periods
+
+
+#### **This RQ can be paired with a visualization to answer**
+
+
+
+
+################## Pattern Discovery ################## 
+
+
+# RQ(x): What is the relationship between government expenditure and inflation rate across the 3 COVID periods?
+
+# Code for Expenses can be found in "code for VAR model & HFCE trend.R"
+
+# Revenues
+
+# First, visualization (also available in EDA)
+ggplot(data = cpi_main, aes(x = REF_DATE, y = B..Revenues, color = covid, group = covid)) + geom_point() + geom_line() + 
+  xlab("Month") + ylab("Revenues") + 
+  ggtitle("Trend of Government Revenues by Month") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# From the visualization, we can see an overall increasing trend in government revenues over time
+
+
+# Model
+revenues_model <- lm(CPI.median ~ B..Revenues, data = cpi_main)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(revenues_model$residuals)
+qqline(revenues_model$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(revenues_model)) # p < 0.05, normality assumption is not met
+
+# Power transform
+boxcox(revenues_model) # lambda = -1.5 is the best
+
+revenues_model_boxcox <- lm(CPI.median^(-1.5) ~ B..Revenues, data = cpi_main)
+
+# Check normality again
+shapiro.test(residuals(revenues_model_boxcox)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(revenues_model_boxcox$residuals ~ revenues_model_boxcox$fitted.values) 
+# there seems to be a subtle U-shaped pattern
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(revenues_model_boxcox) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(revenues_model_boxcox)
+# 1. Government revenue significant predicts inflation rate (p < .001)
+# 2. R-squared = 0.5831, meaning 58% of variation in inflation rate can be explained by government revenues in this model
+# 3. For each unit increase in government revenue, inflation rate will decrease by 0.00001
+# formula: 1 / CPI^1.5 = 0.73 - 0.00001 * Revenues
+
+ggplot(data = cpi_main, aes(x = B..Revenues, y = CPI.median^(-1.5))) + 
+  geom_point() + 
+  geom_smooth(method = "lm", col = "blue") + 
+  xlab("Revenues") + ylab("CPI") +
+  ggtitle("Predicted CPI by Revenues")
+
+
+
+
+
+# RQ5: What is the relationship between housing price increase and inflation rate in the context of the 3 COVID periods?
+
+### UPDATED RQ5: Does increase in housing price index predict change in inflation rate?
+
+
+# First, visualization (also available in EDA)
+ggplot(data = cpi_main, aes(x = REF_DATE, y = Increased.housing.price.ratio, color = covid)) + geom_point() + 
+  xlab("Month") + ylab("Increase in Housing Price Index Comparing to December 2016") + 
+  ggtitle("Trend of Increase in Housing Price Index by Month") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# From the visualization, we can see that there are 3 distinct trends identified across the 3 periods relative to COVID
+
+
+
+# Filter data from main data frames
+precovid <- cpi_main %>% 
+  filter(covid == "Pre-COVID")
+
+duringcovid <- cpi_main %>% 
+  filter(covid == "COVID")
+
+postcovid <- cpi_main %>% 
+  filter(covid == "Post-COVID")
+
+
+######## Pre-COVID ######## 
+precovid_housing <- lm(CPI.median ~ Increased.housing.price.ratio, data = precovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(precovid_housing$residuals)
+qqline(precovid_housing$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(precovid_housing)) # marginally significant, still assumes test of normality passes
+
+# Check constant variance + linearity
+plot(precovid_housing$residuals ~ precovid_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(precovid_housing) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(precovid_housing)
+# 1. Increase in housing price index significant predicts inflation rate in the pre-COVID period (p < .001)
+# 2. R-squared = 0.5577, meaning 56% of variation in inflation rate pre-COVID can be explained by increase in housing price index in this model
+# 3. For each unit increase in housing price index, inflation rate will decrease by 0.44
+# formula: CPI = 3.19 - 0.44 * Increased.housing.price.index.ratio
+
+ggplot(data = precovid, aes(x = Increased.housing.price.ratio, y = CPI.median)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", col = "blue") + 
+  xlab("Increase in Housing Price Index") + ylab("CPI") +
+  ggtitle("Predicted CPI by Increase in Housing Price Index in pre-COVID period")
+
+
+
+######## ######## 
+
+
+######## During COVID ######## 
+duringcovid_housing <- lm(CPI.median ~ Increased.housing.price.ratio, data = duringcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(duringcovid_housing$residuals)
+qqline(duringcovid_housing$residuals)
+# residuals seem to follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(duringcovid_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(duringcovid_housing$residuals ~ duringcovid_housing$fitted.values) 
+# U-shape pattern, meaning that data does not fit in a linear model
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(duringcovid_housing) # p < 0.05, constant variance assumption is not met
+
+# Add a squared term of x
+duringcovid_housing_poly <- lm(CPI.median ~ Increased.housing.price.ratio + I(Increased.housing.price.ratio^2), data = duringcovid)
+
+plot(duringcovid_housing_poly$residuals ~ duringcovid_housing_poly$fitted.values) 
+# residuals now randomly scattered around r = 0, and variances seem to be constant for fitted values
+
+# Results of the regression model
+summary(duringcovid_housing_poly)
+# 1. Increase in housing price index significant predicts inflation rate during COVID (p < .001)
+# 2. The coefficient for x^2 means curvature. Since coefficient is close to 0, the curve is nearly linear in this model
+# 3. R-squared = 0.9859, meaning 99% of variation in inflation rate during COVID can be explained by increase in housing price index in this model
+# 4. For each unit increase in housing price index, inflation rate will decrease by 0.07
+# formula: CPI = 2.09 - 0.07 * Increased.housing.price.index.ratio + 0.006 * Increased.housing.price.index.ratio^2
+
+ggplot(duringcovid, aes(x = Increased.housing.price.ratio, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), color = "blue") + 
+  xlab("Increase in Housing Price Index") + ylab("CPI") +
+  ggtitle("Curved Effect of Increase in Housing Price Index on CPI during COVID")
+
+# Compare which model is better
+anova(duringcovid_housing, duringcovid_housing_poly)
+# Quadratic term is significant (p < .001), which means that model is a better fit for prediction of inflation during COVID
+
+######## ######## 
+
+
+######## Post-COVID ######## 
+postcovid_housing <- lm(CPI.median ~ Increased.housing.price.ratio, data = postcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(postcovid_housing$residuals)
+qqline(postcovid_housing$residuals)
+# Patterns follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(postcovid_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(postcovid_housing$residuals ~ postcovid_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(postcovid_housing) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(postcovid_housing)
+# 1. Increase in housing price index significant predicts inflation rate in the post-COVID period (p < .001)
+# 2. R-squared = 0.6562, meaning 66% of variation in inflation rate in the post-COVID period can be explained by increase in housing price index in this model
+# 3. For each unit increase in housing price index, inflation rate will increase by 0.89
+# formula: CPI = -21.27 + 0.89 * Increased.housing.price.index.ratio
+
+ggplot(postcovid, aes(x = Increased.housing.price.ratio, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Increase in Housing Price Index") + ylab("CPI") +
+  ggtitle("Predicted CPI by Increase in Housing Price Index in post-COVID period")
+
+######## ######## 
+
+
+
+
+# RQ6: What is the relationship between population size and inflation rate?
+
+#### UPDATED RQ6: Does change in population size predict change in inflation rate?
+
+# Visualization can be found from EDA
+
+# Births: steady trend across the years
+# Deaths: steady trend across the years
+# Emigrants: steady trend across the years
+# Immigrants: decrease from 2017 to 2021; increase from 2021 to 2024
+# Even though it might be beneficial to do 2 models for immigrants, there are only 7 data points available in total, in which the sample size would not be big enough to make meaningful statistical inferences
+
+
+# All population components
+summary(lm(CPI.median ~ Births + Deaths + Emigrants + Immigrants, data = cpi_main))
+# None of the population components is predictive of change in inflation rate
+
+
+#####  What about individual population components? ##### 
+
+##### Births ##### 
+
+births_model <- lm(CPI.median ~ Births, data = cpi_main)
+
+# Check normality
+qqnorm(births_model$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(births_model)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(births_model$residuals ~ births_model$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(births_model) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(births_model)
+# 1. Births is significant in predicting change in inflation rate (p = 0.0157)
+# 2. R-squared = 0.6644, meaning 66.4% of variation in inflation rate can be explained by Births (the model is also statistically significant)
+# 3. For every unit increase in Births, there is a 0.0001 decrease in inflation rate
+# formula: CPI.median = 44.94 - 0.0001 * Births
+
+ggplot(cpi_main, aes(x = Births, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Births") + ylab("CPI") +
+  ggtitle("Predicted CPI by Number of Births")
+
+
+##### Deaths ##### 
+
+deaths_model <- lm(CPI.median ~ Deaths, data = cpi_main)
+
+# Check normality
+qqnorm(deaths_model$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(deaths_model)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(deaths_model$residuals ~ deaths_model$fitted.values) 
+# Funnel shape pattern, indicating unequal variances
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(deaths_model) # p < 0.05, constant variance assumption is not met
+
+# Log transform the model
+deaths_model_log <- lm(log(CPI.median) ~ Deaths, data = cpi_main)
+
+# Check constant variance again
+bptest(deaths_model_log) # p-value is still less than 0.05
+
+# Box-Cox transformation to determine the best power transformation
+library(MASS)
+boxcox(deaths_model, lambda = seq(-6, 2, by = 1)) # lambda = -2 is the best
+
+# New boxcox model
+deaths_model_boxcox <- lm(CPI.median^(-2) ~ Deaths, data = cpi_main)
+
+# Check constant variance again
+bptest(deaths_model_boxcox) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(deaths_model_boxcox)
+# 1. Deaths is significant in predicting change in inflation rate (p = 0.00187)
+# 2. R-squared = 0.853, meaning that 85% of variation in inflation rate can be explained by Deaths
+# 3. For every unit increase in Deaths (a person in this case), there would be a 0.000005 decrease in inflation rate
+# formula: 1 / CPI.median^2 = 1.49 - 0.000005 * Deaths
+
+ggplot(cpi_main, aes(x = Deaths, y = CPI.median^(-2))) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Deaths") + ylab("CPI") +
+  ggtitle("Predicted CPI by Number of Deaths")
+
+
+##### Emigrants ##### 
+
+emigrants_model <- lm(CPI.median ~ Emigrants, data = cpi_main)
+
+# Check normality
+qqnorm(emigrants_model$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(emigrants_model)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(emigrants_model$residuals ~ emigrants_model$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(emigrants_model) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(emigrants_model)
+# Emigrants is not significant predictor of change in inflation
+
+ggplot(cpi_main, aes(x = Emigrants, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Emigrants") + ylab("CPI") +
+  ggtitle("Predicted CPI by Number of Emigrants")
+
+
+##### Immigrants ##### 
+
+immigrants_model <- lm(CPI.median ~ Immigrants, data = cpi_main)
+
+# Check normality
+qqnorm(immigrants_model$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(immigrants_model)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(immigrants_model$residuals ~ immigrants_model$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(immigrants_model) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(immigrants_model)
+# 1. Immigrants is significant in predicting change in inflation rate (p = 0.00965)
+# 2. R-squared = 0.7216, meaning 72% of variation in inflation rate can be explained by Immigrants (the model is also statistically significant)
+# 3. For every unit increase in Immigrants, there is a 0.000098 increase in inflation rate
+# formula: CPI.median = -0.62 + 0.0000098 * Immigrants
+
+ggplot(cpi_main, aes(x = Immigrants, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Immigrants") + ylab("CPI") +
+  ggtitle("Predicted CPI by Number of Immigrants")
+
+
+
+# RQ7: What is the relatiimmigrants_model# RQ7: What is the relationship between housing price trends and population growth, and how do they influence each other? 
+summary(lm(Increased.housing.price.ratio ~ Births + Deaths + Emigrants + Immigrants, data = cpi_main))
+# None of the population components is predictive of increase in housing price ratio
+
+# What about individual population components?
+
+##### Births #####
+
+births_housing <- lm(Increased.housing.price.ratio ~ Births, data = cpi_main)
+
+# Check normality
+qqnorm(births_housing$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(births_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(births_housing$residuals ~ births_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(births_housing) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(births_housing)
+# 1. Births is significant in predicting increase in housing price index (p = 0.0174)
+# 2. R-squared = 0.6516, meaning 65.16% of variation in housing price ratio can be explained by Births (the model is also statistically significant)
+# 3. For every unit increase in Births, there is a 0.001 decrease in housing price ratio
+# formula: Increased.housing.price.ratio = 453.54 - 0.001 * Births
+
+
+
+##### Deaths #####
+
+deaths_housing <- lm(Increased.housing.price.ratio ~ Deaths, data = cpi_main)
+
+# Check normality
+qqnorm(deaths_housing$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(deaths_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(deaths_housing$residuals ~ deaths_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(deaths_housing) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(deaths_housing)
+# 1. Deaths is significant in predicting increase in housing price index (p= 0.00148)
+# 2. R-squared = 0.8659, meaning 86.59% of variation in housing price ratio can be explained by deaths (the model is also statistically significant)
+# 3. For every unit increase in deaths, there is a 0.0006 increase in housing price ratio
+# formula: Increased.housing.price.ratio = -135.24 + 0.0006 * Deaths
+
+
+##### Emigrants #####
+
+emigrants_housing <- lm(Increased.housing.price.ratio ~ Emigrants, data = cpi_main)
+
+# Check normality
+qqnorm(emigrants_housing$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(emigrants_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(emigrants_housing$residuals ~ emigrants_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(emigrants_housing) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(emigrants_housing) # non-sig
+
+
+##### Immigrants #####
+
+immigrants_housing <- lm(Increased.housing.price.ratio ~ Immigrants, data = cpi_main)
+
+# Check normality
+qqnorm(immigrants_housing$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(immigrants_housing)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(immigrants_housing$residuals ~ immigrants_housing$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(immigrants_housing) # p > 0.05, constant variance assumption is met
+
+# Results of regression model
+summary(immigrants_housing)
+# 1. Immigrants is significant in predicting increase in housing price index (p = 0.00759)
+# 2. R-squared = 0.7462, meaning 75% of variation in housing price ratio can be explained by Immigrants (the model is also statistically significant)
+# 3. For every unit increase in Immigrants, there is a 0.0001 increase in housing price ratio
+# formula: Increased.housing.price.ratio = -22.84 + 0.0001 * Immigrants
+
+
+
+# RQ8.1: What is the relationship between gas prices (both regular unleaded gasoline and diesel fuel) and inflation rate? 
+
+
+# First, visualization (also available in EDA)
+ggplot(data = cpi_main, aes(x = REF_DATE, y = Unleaded.gas.prices, color = covid, group = covid)) + geom_point() + geom_line() +
+  xlab("Month") + ylab("Regular unleaded gasoline price (Cents per Litre") + 
+  ggtitle("Trend of Regular Unleaded Gasoline Price by Month") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# From the visualization, we can see that there are 3 distinct trends identified across the 3 periods relative to COVID
+
+
+#### Regular unleaded gasoline
+
+######## Pre-COVID ######## 
+precovid_gas <- lm(CPI.median ~ Unleaded.gas.prices, data = precovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(precovid_gas$residuals)
+qqline(precovid_gas$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(precovid_gas)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(precovid_gas$residuals ~ precovid_gas$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(precovid_gas) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(precovid_gas) # non-sig
+
+
+######## ######## 
+
+
+######## During COVID ######## 
+duringcovid_gas <- lm(CPI.median ~ Unleaded.gas.prices, data = duringcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(duringcovid_gas$residuals)
+qqline(duringcovid_gas$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(duringcovid_gas)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(duringcovid_gas$residuals ~ duringcovid_gas$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(duringcovid_gas) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(duringcovid_gas)
+# 1. Gas price significant predicts inflation rate during COVID (p < .001)
+# 2. R-squared = 0.9217, meaning 92% of variation in inflation rate during COVID can be explained by gas prices in this model
+# 3. For each unit increase in gas price (cents per litre), inflation rate will increase by 0.03
+# formula: CPI = -1.46 + 0.03 * Unleaded.gas.prices
+
+ggplot(duringcovid, aes(x = Unleaded.gas.prices, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Regular Unleaded Gasoline Price (in Cents per Litre)") + ylab("CPI") +
+  ggtitle("Predicted CPI by Regular Unleaded Gasoline Price")
+
+
+######## ######## 
+
+
+######## Post-COVID ######## 
+postcovid_gas <- lm(CPI.median ~ Unleaded.gas.prices, data = postcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(postcovid_gas$residuals)
+# Residuals do not seem to follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(postcovid_gas)) # p < 0.05, normality assumption is not met
+
+# Log transform the data
+postcovid_gas_log <- lm(log(CPI.median) ~ Unleaded.gas.prices, data = postcovid)
+
+# Check normality again
+shapiro.test(residuals(postcovid_gas_log)) # p > 0.05, normality assumption is now met
+
+# Check constant variance + linearity
+plot(postcovid_gas_log$residuals ~ postcovid_gas_log$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(postcovid_gas_log) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(postcovid_gas_log) # non-sig
+
+######## ######## 
+
+
+# First, visualization (also available in EDA)
+ggplot(data = cpi_main, aes(x = REF_DATE, y = Disel.fuel.at.self.service, color = covid, group = covid)) + geom_point() + geom_line() +
+  xlab("Month") + ylab("Diesel Price (Cents per Litre)") + 
+  ggtitle("Trend of Diesel Price by Month") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# From the visualization, we can see that there are 3 distinct trends identified across the 3 periods relative to COVID
+
+
+# Diesel
+
+######## Pre-COVID ######## 
+precovid_diesel <- lm(CPI.median ~ Disel.fuel.at.self.service, data = precovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(precovid_diesel$residuals)
+qqline(precovid_diesel$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(precovid_diesel)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(precovid_diesel$residuals ~ precovid_diesel$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(precovid_diesel) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(precovid_diesel)
+# 1. Diesel prices are significant in predicting inflation rate in pre-COVID period (p = 0.009)
+# 2. R-squared = 0.1979, meaning that 20% of variation in inflation rate can be explained by diesel prices in this model
+# 3. For each unit increase in diesel price, inflation rate will increase by 0.0009
+# formula: CPI = 0.03 + 0.0009 * Diesel.price
+
+ggplot(precovid, aes(x = Disel.fuel.at.self.service, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Total Diesel Price (in Cents per Litre)") + ylab("CPI") +
+  ggtitle("Predicted CPI by Total Diesel Price in pre-COVID period")
+
+
+######## ######## 
+
+
+######## During COVID ######## 
+duringcovid_diesel <- lm(CPI.median ~ Disel.fuel.at.self.service, data = duringcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(duringcovid_diesel$residuals)
+qqline(duringcovid_diesel$residuals)
+# residuals follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(duringcovid_diesel)) # p > 0.05, normality assumption is met
+
+# Check constant variance + linearity
+plot(duringcovid_diesel$residuals ~ duringcovid_diesel$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+# Breusch-Pagan test to cross reference results from visualization
+bptest(duringcovid_diesel) # p > 0.05, constant variance assumption is met
+
+# Results of the regression model
+summary(duringcovid_diesel)
+# 1. Diesel price significant predicts inflation rate during COVID (p < .001)
+# 2. R-squared = 0.9681, meaning 97% of variation in inflation rate during COVID can be explained by diesel prices in this model
+# 3. For each unit increase in diesel price (cents per litre), inflation rate will increase by 0.002
+# formula: CPI = -1.03 + 0.002 * Diesel.price
+
+ggplot(duringcovid, aes(x = Disel.fuel.at.self.service, y = CPI.median)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + 
+  xlab("Total Diesel Price (in Cents per Litre)") + ylab("CPI") +
+  ggtitle("Predicted CPI by Total Diesel Price during COVID")
+
+
+######## ######## 
+
+
+######## Post-COVID ######## 
+postcovid_diesel <- lm(CPI.median ~ Disel.fuel.at.self.service, data = postcovid)
+
+# Assumptions
+
+# Check normality of residuals
+qqnorm(postcovid_diesel$residuals)
+qqline(postcovid_diesel$residuals)
+# Residuals do not seem to follow a straight line
+
+# Shapiro-Wilk test to cross reference results from visualization
+shapiro.test(residuals(postcovid_diesel)) # p < 0.05, normality assumption is not met
+
+
+# Add a quadratic term + log transform y
+postcovid_diesel_poly <- lm(log(CPI.median) ~ Disel.fuel.at.self.service + I(Disel.fuel.at.self.service^2), data = postcovid)
+
+# Check normality again
+shapiro.test(residuals(postcovid_diesel_poly)) # normality assumption is now met
+
+# Check constant variance + linearity
+plot(postcovid_diesel_poly$residuals ~ postcovid_diesel_poly$fitted.values) 
+# residuals are randomly distributed around r = 0
+# variance is approximately constant for all fitted values
+
+bptest(postcovid_diesel_poly) # constant variance assumption is met
+
+
+# Results of the regression model
+summary(postcovid_diesel_poly) # non-sig
+
+
+
+######## ######## 
+
+# RQ 8.3: What if we consider all gas prices?
+summary(lm(CPI.median ~ Unleaded.gas.prices + Average.diesel.prices + Average.HFCE, data = cpi_main))
+# 1. All types of gas, except for regular unleaded gasoline, are significant predictors of change in inflation rate (p < 0.05)
+# 2. R-squared = 0.896, meaning 89.6% of variation in inflation rate can be explained by this model
+# 3. In terms of significant predictors, for every unity increase in diesel price, inflation rate decreases by 0.05
+# 4. For every unit increase in HFCE, inflation rate increases by 0.08
+
+
+
+# RQ9: Is gas price (unleaded gasoline, diesel fuel, and HFCE) in each province dependent/independent of inflation rate?
+# Reference: https://www.sthda.com/english/wiki/correlation-test-between-two-variables-in-r
+
+##### For this one, we will have to manipulate the gas_prices data frame instead (add CPI median in the data frame) #####
+
 
 ############# Merge CPI into gas_prices & diesel data frames separately ############# 
 
@@ -190,10 +979,9 @@ gas_prices_cpi <- gas_prices_cpi %>%
 # Change object type to date
 gas_prices_cpi$REF_DATE <- as.Date(ymd(gas_prices_cpi$REF_DATE))
 
-  
-  
+
+
 # Diesel
-  
 diesel_cpi <- cbind(diesel, cpi_main$CPI.median)
 
 diesel_cpi <- diesel_cpi %>% 
@@ -205,7 +993,6 @@ diesel_cpi <- diesel_cpi %>%
 
 
 # HFCE
-
 household_heating_fuel_cpi <- cbind(household_heating_fuel, cpi_main$CPI.median)
 
 household_heating_fuel_cpi <- household_heating_fuel_cpi %>% 
@@ -213,237 +1000,10 @@ household_heating_fuel_cpi <- household_heating_fuel_cpi %>%
   dplyr::select(-X) %>% 
   # Rename CPI.median
   rename(CPI.median = `cpi_main$CPI.median`)
-  
 
 
 
-############## Research Questions ############## 
-
-# Call the cpi_main data frame
-cpi_main <- read.csv("C:/Users/user/Desktop/UofC/W25/DATA 501/Data analysis/cpi_main.csv")
-
-# Take out the first column
-cpi_main <- cpi_main %>% dplyr::select(-X)
-
-
-## Now let's answer our RQs ##
-
-# # Retrieve list of column names
-# colnames(cpi_main)
-# 
-# # Standardize our data
-# 
-# cpi_main_standardized <- lapply(cpi_main[3:28], scale)
-
-
-# RQ1: Which factor(s) lead/s to the most significant change in inflation rate in the 3 periods relative to the COVID-19 pandemic (Pre-COVID, COVID, Post-COVID)?
-
-# # First, identify correlation between factors
-# corr.test(cpi_main[3:28])
-# 
-# # By groups
-# 
-# # Housing price
-# corrplot(cor(cpi_main[3:28]), type="upper", order="hclust")
-
-
-# This is a mess ahhhh
-# Will have to rethink on how we would like to do with this RQ
-# summary(lm(CPI.median ~ Increased.housing.price.ratio + 
-#           Average.diesel.prices + Average.HFCE  + Unleaded.gas.prices  + 
-#           `All households_Total assets` + `All households_Total liabilities` + `Lowest income quintile_Total assets` + `Lowest income quintile_Total liabilities` + 
-#           `Second income quintile_Total assets` + `Second income quintile_Total liabilities` + `Third income quintile_Total assets` + `Third income quintile_Total liabilities` +
-#           `Fourth income quintile_Total assets` + `Fourth income quintile_Total liabilities` + `Highest income quintile_Total assets` + `Highest income quintile_Total liabilities` +
-#           Births + Deaths + Immigrants + Emigrants +
-#           `A. Budgetary balance` + `B. Revenues` + `C. Expenses`, 
-#           data = cpi_main))
-
-
-
-
-# RQ2: Which factor is the most significantly impacted by fluctuation in inflation rate in the 3 periods relative to the COVID-19 pandemic? 
-# I am proposing to delete this RQ -- please see Notes for Final Report on OneDrive
-
-
-
-
-# RQ3: How does inflation rate fluctuate, and whether the fluctuation varies across the 3 periods relative to the COVID-19 pandemic?  
-summary(lm(CPI.median ~ covid, data = cpi_main))
-# 1. All 3 COVID periods significantly predict change in inflation rate (p < 0.05)
-# 2. R-squared = 0.5606, meaning that 56% of variation in inflation rate can be explained by COVID periods
-# 3. Post-COVID has higher CPI median comparing to COVID, meaning inflation rate was the highest post-COVID
-# 4. Pre-COVID has lower CPI median relative to COVID, meaning inflation rate was the lowest pre-COVID
-
-# Careful with interpretation for this one****
-date_cpi_lm <- summary(lm(CPI.median ~ REF_DATE, data = cpi_main))
-date_cpi_lm
-
-# predict(date_cpi_lm, newdata = data.frame("2017-10-01"))
-
-#### **This RQ can be paired with a visualization to answer**
-
-
-
-
-# RQ(x): What is the relationship between government's revenues and expenses and inflation rate?
-summary(lm(CPI.median ~ B..Revenues + C..Expenses, data = cpi_main))
-# p < 0.05 for Revenues, meaning that Revenues is a significant predictor of inflation rate
-# For every unit increase in Revenues, inflation rate increases by 0.0001
-# R-squared = 0.4242, meaning that 42.4% of variation in inflation can be explained by this model
-
-
-# What about individual main effects?
-
-summary(lm(CPI.median ~ B..Revenues, data = cpi_main))
-# p < 0.05 for Revenues, meaning that Revenues is a significant predictor of inflation rate
-# For every unit increase in Revenues, inflation rate increases by 0.0001
-# R-squared = 0.4289, meaning that 42.9% of variation in inflation can be explained by this model
-
-summary(lm(CPI.median ~ C..Expenses, data = cpi_main)) # non-sig
-
-
-
-
-# RQ4: What is the relationship between household income and inflation rate?
-
-# Very messy ahhh
-# Don't know why it is NA for highest income-assets
-summary(lm(CPI.median ~ All.households_Total.assets + All.households_Total.liabilities + Lowest.income.quintile_Total.assets + Lowest.income.quintile_Total.liabilities + 
-             Second.income.quintile_Total.assets + Second.income.quintile_Total.liabilities + Third.income.quintile_Total.assets + Third.income.quintile_Total.liabilities +
-             Fourth.income.quintile_Total.assets + Fourth.income.quintile_Total.liabilities + Highest.income.quintile_Total.assets + Highest.income.quintile_Total.liabilities, data = cpi_main))
-
-
-
-# RQ5: What is the relationship between housing price increase and inflation rate?
-
-# The model
-housing_price_model <- lm(CPI.median ~ Increased.housing.price.ratio, data = cpi_main)
-
-# Tests of assumptions
-
-# 1. Normality
-qqnorm(housing_price_model$residuals)
-# Plot doesn't seem to follow a straight line 
-
-# Log transform data so that CPI is a better fit for the regression model + Shapiro-Wilk test for normality
-shapiro.test(lm(log(CPI.median) ~ Increased.housing.price.ratio, data = cpi_main)$residuals)
-# p > 0.05, fail to reject null hypothesis; assumption of normality is met
-# H0: data follows normal distribution
-# Ha: data does not follow normal distribution
-
-
-# 2. Linearity
-plot(housing_price_model$residuals, housing_price_model$fitted) + abline(h = 0, col = "blue")
-# Plot follows a specific pattern, linearity assumption is not met
-
-# To test to see if Housing price is non-linear
-summary(lm(CPI.median ~ Increased.housing.price.ratio + I(Increased.housing.price.ratio^2) + I(Increased.housing.price.ratio^3), data = cpi_main))
-
-library(mgcv)
-summary(gam(CPI.median ~ Increased.housing.price.ratio, data = cpi_main))
-
-
-# 3. Constant variance
-
-# Using Breusch-Pagan test
-bptest(lm(log(CPI.median) ~ Increased.housing.price.ratio, data = cpi_main)) # p < 0.05
-bptest(lm(1 / CPI.median ~ Increased.housing.price.ratio, data = cpi_main)) # p > 0.05, assumption of constant variance met
-
-
-
-
-summary(lm(CPI.median ~ Increased.housing.price.ratio, data = cpi_main))
-# 1. Increase in housing price ratio significant predicts change in inflation rate (p < 0.05)
-# 2. R-squared = 0.8217, meaning that 82.17% of variation in inflation rate can be explained by Increase in housing price ratio
-# 3. For every unit increase in housing price ratio, inflation rate will increase by 0.09
-
-
-
-
-# RQ6: What is the relationship between population size and inflation rate?
-summary(lm(CPI.median ~ Births + Deaths + Emigrants + Immigrants, data = cpi_main))
-# None of the population components is predictive of change in inflation rate
-
-# What about individual population components?
-summary(lm(CPI.median ~ Births, data = cpi_main))
-# 1. Births is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.6644, meaning 66.4% of variation in inflation rate can be explained by Births (the model is also statistically significant)
-# 3. For every unit increase in Births, there is a 0.0001 decrease in inflation rate
-
-summary(lm(CPI.median ~ Deaths, data = cpi_main))
-# 1. Deaths is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.7, meaning 70% of variation in inflation rate can be explained by Deaths (the model is also statistically significant)
-# 3. For every unit increase in Deaths, there is a 0.00005 increase in inflation rate
-
-summary(lm(CPI.median ~ Emigrants, data = cpi_main)) # non-sig
-
-summary(lm(CPI.median ~ Immigrants, data = cpi_main))
-# 1. Immigrants is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.7216, meaning 72.16% of variation in inflation rate can be explained by Immigrants (the model is also statistically significant)
-# 3. For every unit increase in Immigrants, there is a 0.00001 increase in inflation rate
-
-
-
-# RQ7: What is the relationship between housing price trends and population growth, and how do they influence each other? 
-summary(lm(Increased.housing.price.ratio ~ Births + Deaths + Emigrants + Immigrants, data = cpi_main))
-# None of the population components is predictive of increase in housing price ratio
-
-# What about individual population components?
-summary(lm(Increased.housing.price.ratio ~ Births, data = cpi_main))
-# 1. Births is significant in predicting housing price ratio (p < 0.05)
-# 2. R-squared = 0.6516, meaning 65.16% of variation in housing price ratio can be explained by Births (the model is also statistically significant)
-# 3. For every unit increase in Births, there is a 0.001 decrease in housing price ratio
-
-summary(lm(Increased.housing.price.ratio ~ Deaths, data = cpi_main))
-# 1. Deaths is significant in predicting housing price ratio (p < 0.05)
-# 2. R-squared = 0.8659, meaning 86.59% of variation in housing price ratio can be explained by Deaths (the model is also statistically significant)
-# 3. For every unit increase in Births, there is a 0.0006 increase in housing price ratio
-
-summary(lm(Increased.housing.price.ratio ~ Emigrants, data = cpi_main)) # non-sig
-
-summary(lm(Increased.housing.price.ratio ~ Immigrants, data = cpi_main))
-# 1. Immigrants is significant in predicting housing price ratio (p < 0.05)
-# 2. R-squared = 0.7462, meaning 74.62% of variation in housing price ratio can be explained by Immigrants (the model is also statistically significant)
-# 3. For every unit increase in Immigrants, there is a 0.0001 increase in housing price ratio
-
-
-
-# RQ8.1: What is the relationship between gas prices (both regular unleaded gasoline and diesel fuel) and inflation rate? 
-
-# Regular unleaded gasoline
-summary(lm(CPI.median ~ Unleaded.gas.prices, data = cpi_main))
-# 1. Gas price is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.6869, meaning that 68.7% of variation in inflation rate can be explained by gas prices
-# 3. For every unit increase in gas price, inflation rate increases by 0.036
-
-# Diesel
-summary(lm(CPI.median ~ Average.diesel.prices, data = cpi_main))
-# 1. Diesel price is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.8214, meaning that 82.1% of variation in inflation rate can be explained by diesel prices
-# 3. For every unit increase in gas price, inflation rate increases by 0.03
-
-# RQ8.2: What is the relationship between HFCE and inflation rate? 
-summary(lm(CPI.median ~ Average.HFCE, data = cpi_main))
-# 1. HFCE is significant in predicting change in inflation rate (p < 0.05)
-# 2. R-squared = 0.8693, meaning that 86.9% of variation in inflation rate can be explained by HFCE
-# 3. For every unit increase in HFCE, inflation rate increases by 0.03
-
-# RQ 8.3: What if we consider all gas prices?
-summary(lm(CPI.median ~ Unleaded.gas.prices + Average.diesel.prices + Average.HFCE, data = cpi_main))
-# 1. All types of gas, except for regular unleaded gasoline, are significant predictors of change in inflation rate (p < 0.05)
-# 2. R-squared = 0.896, meaning 89.6% of variation in inflation rate can be explained by this model
-# 3. In terms of significant predictors, for every unity increase in diesel price, inflation rate decreases by 0.05
-# 4. For every unit increase in HFCE, inflation rate increases by 0.08
-
-
-
-# RQ9: Is gas price (unleaded gasoline, diesel fuel, and HFCE) in each province dependent/independent of inflation rate?
-# Reference: https://www.sthda.com/english/wiki/correlation-test-between-two-variables-in-r
-
-##### For this one, we will have to manipulate the gas_prices data frame instead (add CPI median in the data frame) #####
-
-
-## Correlation analysis
+###### Correlation analysis ###### 
 
 # Regular unleaded gasoline
 
@@ -532,49 +1092,6 @@ cor.test(household_heating_fuel_cpi$VALUE, household_heating_fuel_cpi$CPI.median
 # Ha: correlation coefficient, rho, does not equal to 0
 
 
-######### SCRAP THESE ######### 
-
-# ## Linear mixed effect models
-# 
-# # Since we checked assumption of normality above, and all of the variables do not follow normal distribution, we will have to scale our data so that they are closer to normal
-# 
-# hist(gas_prices_cpi$VALUE) # data is not as normally distributed
-# 
-# hist(gas_prices_cpi$CPI.median)
-# # data is right skewed, log transformation needed
-# 
-# # scale gas prices so that data fits better in regression model
-# gas_prices_cpi$gas_prices_scaled <- scale(gas_prices_cpi$VALUE)
-# 
-# # Check distribution
-# hist(gas_prices_cpi$gas_prices_scaled)
-# 
-# 
-# # Q: Is gas price a significant predictor of inflation rate when random effects of between-province differences are accounted for?
-# gas_prices_mlm <- lmer(log(CPI.median) ~ gas_prices_scaled + (1|Province), data = gas_prices_cpi)
-# tab_model(gas_prices_mlm)
-# 
-# # Gas prices is significant predictor of CPI 
-
-
-# ## ANOVAs
-# 
-# # Unleaded gasoline
-# summary(aov(VALUE ~ CPI.median*Province, gas_prices_cpi))
-# # p < 0.05 for both CPI and Province, meaning that gas prices in each province are significantly different, and that they also depend on inflation rate
-# # Interaction term also has p < 0.05, meaning that impact of inflation differs between province
-# 
-# # Diesel price
-# summary(aov(VALUE ~ CPI.median*Province, diesel_cpi))
-# # p < 0.05 for both CPI and Province, meaning that gas prices in each province are significantly different, and that they also depend on inflation rate
-# # Interaction term also has p < 0.05, meaning that impact of inflation differs between province
-# 
-# # HFCE
-# summary(aov(VALUE ~ CPI.median*Province, household_heating_fuel_cpi))
-# # p < 0.05 for both CPI and Province, meaning that gas prices in each province are significantly different, and that they also depend on inflation rate
-# # Interaction term also has p < 0.05, meaning that impact of inflation differs between province
-
-
 
 ######### ######### ######### ######### 
 
@@ -608,91 +1125,6 @@ summary(lm(VALUE ~ Province*CPI.median, household_heating_fuel_cpi))
 # R-squared = 0.8423, meaning 84% of variation in diesel prices can be explained by both inflation rate and province, along with their interaction effects
 
 
-
-
 #####################
-
-
-
-#### Before we do this step, we should have already identified significant predictors of inflation****
-
-# RQ10: Based on analysis of historical data (between October 2017 and December 2024), how will the inflation rate fluctuate in the next 2.5 - 3 years?
-
-# This is where we use VAR
-
-# Condition checking: Stationarity -- whether means and variances are constant over time and do not show any trending behaviour
-
-# To do so, we conduct the Dickey-Fuller test
-
-# Create a new data frame with only numeric data
-cpi_main_numeric <- cpi_main %>% 
-  dplyr::select(-c(covid, Household.heating.fuel.expense, Disel.fuel.at.self.service))
-
-# Number of columns in the data frame
-# n.col <- ncol(cpi_main)
-n.col <- ncol(cpi_main_numeric)
-
-# Create empty vectors to store results from the Dickey-Fuller test
-col.name <- character(n.col) # column name
-DF.value <- numeric(n.col) # test statistic
-lag.order <- numeric(n.col) # lag order
-DF.pval <- numeric(n.col) # p-value
-
-# Create a for loop to store the result of the Dickey-Fuller test for each factor
-
-# The column range starts from 3 because the first 2 columns of the data frame are non-numeric
-# for(i in 3:ncol(cpi_main)){
-#   DF.test.df <- cpi_main[i] # data frame to store the results
-#   col.name[i] <- colnames(cpi_main[i])
-#   DF.value[i] <- adf.test(na.omit(cpi_main[[i]]))$statistic
-#   lag.order[i] <- as.numeric(adf.test(na.omit(cpi_main[[i]]))$parameter)
-#   DF.pval[i] <- adf.test(na.omit(cpi_main[[i]]))$p.value
-# }
-
-for(i in 1:ncol(cpi_main_numeric)){
-  DF.test.df <- cpi_main_numeric[i] # data frame to store the results
-  col.name[i] <- colnames(cpi_main_numeric[i])
-  DF.value[i] <- adf.test(na.omit(cpi_main_numeric[[i]]))$statistic
-  lag.order[i] <- as.numeric(adf.test(na.omit(cpi_main_numeric[[i]]))$parameter)
-  DF.pval[i] <- adf.test(na.omit(cpi_main_numeric[[i]]))$p.value
-}
-
-# Put the data in a data frame
-DF.results.df <- data.frame(col.name, DF.value, lag.order, DF.pval)
-
-DF.results.df <- DF.results.df %>% 
-  # # First, take out the first 2 rows because data is non-numeric
-  # filter(col.name != "") %>% 
-  # Determine if the p-value is less than 0.05 (meaning that variable is stationary)
-  mutate(Hypothesis = case_when(
-    DF.pval <= 0.05 ~ "Stationary",
-    DF.pval > 0.05 ~ "Not stationary"
-  ))
-# Only government revenues is stationary
-# Differencing is needed to make the data more suitable for the forecasting model
-
-ts_cpi_main_numeric <- ts(cpi_main_numeric, start = c(2017, 10), frequency = 12)
-apply(ts_data, 2, adf.test)
-
-
-### We have several options here to obtain data with same frequency: 
-### We can either obtain monthly values for yearly/quarterly data, or do the opposite (obtain yearly values from monthly/quaterly data)
-
-
-
-
-# First, select significant factors in predicting inflation
-
-VARselect(df.lev, lag.max = 12, type = "const", season = 12)
-
-# estimation
-var.model_lev <- VAR(df.lev, p = 2, 
-                     type = "const", season = 4)
-
-# forecast of lev data
-var.pred <- predict(var.model_lev, n.ahead = nhor)
-x11(); par(mai=rep(0.4, 4)); plot(var.pred)
-x11(); par(mai=rep(0.4, 4)); fanchart(var.pred)
-
 
 
