@@ -355,7 +355,7 @@ cpi_forecast <- cumsum(c(last_cpi, cpi_forecast_diff))[-1]
 
 cpi_forecast <- ts(cpi_forecast, start = c(2024, 11), frequency = 12)
 
-plot(ts_cpidata[, "CPI-median"], col = "blue", main = "CPI Forecast", ylab = "CPI", xlab = "Time")
+plot(ts_cpidata[, "CPI-median"], col = "blue", main = "CPI Forecast", ylab = "CPI", xlab = "Time", xlim = c(2017, 2028))
 lines(cpi_forecast, col = "red", lty = 2)
 legend("topleft", legend = c("Actual", "Forecast"), col = c("blue", "red"), lty = 1:2)
 
