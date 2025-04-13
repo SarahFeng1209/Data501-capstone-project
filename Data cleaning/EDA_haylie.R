@@ -4,6 +4,7 @@ library(lme4)
 library(tidyverse)
 library(mosaic)
 library(ggplot2)
+library(readxl)
 
 
 options(scipen = 999)
@@ -22,6 +23,9 @@ gas_prices <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned dat
 household_income <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/household_income_cleaned.csv", na.strings = c(" ", NA))
 housing_price_increase <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/housing_price_increase_cleaned.csv", na.strings = c(" ", NA))
 population_change <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/population_change_cleaned.csv", na.strings = c(" ", NA))
+cpi <- read_excel("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/CPI data - cleaned.xlsx", sheet = "YoY data")
+diesel <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/diesel_cleaned.csv", na.strings = c(" ", NA))
+household_heating_fuel <- read.csv("C:/Users/User/Desktop/UofC/W25/DATA 501/Data/Cleaned data/household_heating_fuel_cleaned.csv", na.strings = c(" ", NA))
 
 
 
@@ -41,7 +45,13 @@ housing_price_increase$REF_DATE <- as.Date(housing_price_increase$REF_DATE)
 #### Descriptive
 
 ## Debt (in millions)
-favstats(~Amount|Central.government.operations, data = debt)
+favstats(~VALUE|Central.government.operations, data = debt)
+
+debt %>% 
+  filter(Central.government.operations == "A. Budgetary balance") %>% 
+  favstats(~VALUE|covid, data = .)
+
+
 
 
 ## Unleaded gasoline price (cents per litre)
@@ -65,11 +75,15 @@ gas_prices %>%
   )
 
 gas_prices %>% 
-  group_by(Province) %>% 
+  filter(Province == "Canada") %>% 
+  group_by(covid) %>% 
   summarise(
+    n = n(),
     mean_price = mean(VALUE, na.rm = TRUE),
     median_price = median(VALUE, na.rm = TRUE),
-    sd_price = sd(VALUE, na.rm = TRUE)
+    sd_price = sd(VALUE, na.rm = TRUE),
+    min = min(VALUE, na.rm = TRUE),
+    max = max(VALUE, na.rm = TRUE)
   )
 
 # By Province
@@ -77,6 +91,13 @@ favstats(~VALUE|Province, data = gas_prices)
 
 # By City
 favstats(~VALUE|City, data = gas_prices)
+
+gas_prices %>% 
+  filter(Province == "Canada") %>%
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  favstats(~VALUE|covid, data = .)
+
+favstats(~VALUE|covid, data = gas_prices)
 
 
 ## Household income (in millions)
@@ -98,10 +119,24 @@ housing_price_increase %>%
   summarise(mean = mean(Increased.ratio.compared.to.Dec.2016),
             sd = sd(Increased.ratio.compared.to.Dec.2016))
 
+housing_price_increase %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  group_by(covid) %>% 
+  summarise(n = n(),
+            mean = mean(Increased.ratio.compared.to.Dec.2016),
+            median = median(Increased.ratio.compared.to.Dec.2016),
+            sd = sd(Increased.ratio.compared.to.Dec.2016),
+            min = min(Increased.ratio.compared.to.Dec.2016),
+            max = max(Increased.ratio.compared.to.Dec.2016))
+
 favstats(~VALUE|Year, data = housing_price_increase)
 
 
 ## Population change (in number of people)
+
+population_change %>% 
+  filter(Province == "Canada" & Type.of.area == "Total CMA and CA") %>% 
+  favstats(~VALUE|Components.of.population.growth, data = .)
 
 population_change %>% 
   summarise(Mean = mean(VALUE, na.rm = T),
@@ -148,6 +183,54 @@ population_change %>%
             SD = sd(VALUE, na.rm = T))
 
 
+## CPI
+cpi %>% 
+  summarise(mean.CPI.median = mean(`CPI-median`, na.rm = T),
+            median.CPI.median = median(`CPI-median`, na.rm = T),
+            sd.CPI.median = sd(`CPI-median`, na.rm = T),
+            min.CPI.median = min(`CPI-median`, na.rm = T),
+            max.CPI.median = max(`CPI-median`, na.rm = T),
+            
+            mean.CPI.trim = mean(`CPI-trim`, na.rm = T),
+            median.CPI.trim = median(`CPI-trim`, na.rm = T),
+            sd.CPI.trim = sd(`CPI-trim`, na.rm = T),
+            min.CPI.trim = min(`CPI-trim`, na.rm = T),
+            max.CPI.trim = max(`CPI-trim`, na.rm = T),
+            
+            mean.CPI.common = mean(`CPI-common`, na.rm = T),
+            median.CPI.common = median(`CPI-common`, na.rm = T),
+            sd.CPI.common = sd(`CPI-common`, na.rm = T),
+            min.CPI.common = min(`CPI-common`, na.rm = T),
+            max.CPI.common = max(`CPI-common`, na.rm = T))
+
+
+## Diesel
+diesel %>% 
+  group_by(Province) %>% 
+  summarise(n = n(),
+            mean = mean(VALUE, na.rm = T),
+            median = median(VALUE, na.rm = T),
+            sd = sd(VALUE, na.rm = T),
+            min = min(VALUE, na.rm = T),
+            max = max(VALUE, na.rm = T))
+
+## Household heating fuel
+favstats(~VALUE|Province, data = household_heating_fuel)
+
+
+# Household income (liabilities)
+household_income %>% 
+  filter(Wealth == "Total liabilities") %>% 
+  favstats(~VALUE|Characteristics, data = .)
+
+# Household income (assets)
+household_income %>% 
+  filter(Wealth == "Total assets") %>% 
+  favstats(~VALUE|Characteristics, data = .)
+
+
+
+
 ##################
 
 
@@ -159,10 +242,11 @@ population_change %>%
 
 # By COVID periods
 debt %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
   filter(Central.government.operations == "A. Budgetary balance") %>% 
   ggplot(aes(x = REF_DATE, y = VALUE, group = covid, colour = covid)) + geom_hline(yintercept = 0) + geom_line() + geom_point() +
-  xlab("Month") + ylab("Amount (in million dollars)") + ggtitle("Line graph of the Canadian government's budgetary balance by Month and COVID periods") +
-  scale_color_discrete(name = "COVID periods")
+  xlab("Months") + ylab("Amount (in million dollars)") + ggtitle("Line graph of the Canadian government's budgetary balance by Month and COVID periods") +
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 
 
 ## Gas price
@@ -172,6 +256,12 @@ gas_prices %>%
   filter(Province != "Canada") %>% 
   ggplot(aes(x = Province, y = VALUE, fill = Province)) + geom_bar(stat = "summary") +
   ylab("Average Gas Price (Cents per Litre)") + ggtitle("Bar Graph of Average Gas Price by Province")
+
+gas_prices %>% 
+  filter(Province != "Canada") %>% 
+  ggplot(aes(x = Province, y = VALUE, colour = Province)) + geom_boxplot() +
+  ylab("Gas Price (Cents per Litre)") + ggtitle("Boxplot of Gas Prices by Province") + 
+  theme(legend.position = "none")
 
 # By national average
 
@@ -184,9 +274,10 @@ gas_prices %>%
 # Line graph by COVID period, national average
 gas_prices %>% 
   filter(Province == "Canada") %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
   ggplot(aes(x = REF_DATE, y = VALUE, group = covid, colour = covid)) + geom_line() + geom_point() + 
-  xlab("Month") + ylab("Average Gas Price (Cents per Litre)") + ggtitle("Line Graph of Average Canadian Gas Prices by Month and COVID Periods") + 
-  scale_color_discrete(name = "COVID Periods")
+  xlab("Month") + ylab("Gas Price (Cents per Litre)") + ggtitle("Line Graph of Canadian Gas Prices by Month and COVID Periods") + 
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 
 ## Household income
 
@@ -207,32 +298,45 @@ household_income_bgd_col <- data.frame(
 
 household_income %>% 
   filter(Wealth == "Net worth (wealth)" & Characteristics != "All households") %>% 
+  mutate(covid = factor(covid, levels = "Pre-COVID", "COVID", "Post-COVID")) %>% 
   ggplot(aes(x = REF_DATE, y = VALUE, group = Characteristics, colour = Characteristics)) + geom_line() + geom_point() +
   geom_rect(data = household_income_bgd_col, aes(xmin = xmin, xmax = xmax, 
                 ymin = -Inf, ymax = Inf, fill = covid), alpha = 0.2, inherit.aes = F) + 
-  scale_colour_hue() +
-  scale_fill_manual(values = c("Pre-COVID" = "skyblue", "COVID" = "pink", "Post-COVID" = "lightgreen")) +
   xlab("Time (3-month intervals)") + ylab("Amount") + ggtitle("Line graph of Net Worth of All Households across Time by Income Quintile and COVID Period") +
-  scale_fill_discrete(name = "COVID Period") + scale_color_discrete(name = "Income Quintile")
+  scale_fill_manual(
+    name = "COVID Period",
+    values = c("Pre-COVID" = "skyblue", "COVID" = "pink", "Post-COVID" = "lightgreen"),
+    breaks = c("Pre-COVID", "COVID", "Post-COVID")
+  ) + 
+  scale_color_discrete(name = "Income Quintile")
 
 household_income %>% 
   filter(Wealth == "Total liabilities" & Characteristics != "All households") %>% 
+  mutate(covid = factor(covid, levels = "Pre-COVID", "COVID", "Post-COVID")) %>% 
   ggplot(aes(x = REF_DATE, y = VALUE, group = Characteristics, colour = Characteristics)) + geom_line() + geom_point() +
   geom_rect(data = household_income_bgd_col, aes(xmin = xmin, xmax = xmax, 
                                                  ymin = -Inf, ymax = Inf, fill = covid), alpha = 0.2, inherit.aes = F) + 
   scale_colour_hue() +
-  scale_fill_manual(values = c("Pre-COVID" = "skyblue", "COVID" = "pink", "Post-COVID" = "lightgreen")) +
   xlab("Time (3-month intervals)") + ylab("Amount") + ggtitle("Line graph of Total Liabilities of All Households across Time by Income Quintile and COVID Period") +
-  scale_fill_discrete(name = "COVID Period") + scale_color_discrete(name = "Income Quintile")
+  scale_fill_manual(
+    name = "COVID Period",
+    values = c("Pre-COVID" = "skyblue", "COVID" = "pink", "Post-COVID" = "lightgreen"),
+    breaks = c("Pre-COVID", "COVID", "Post-COVID")
+  ) +
+  scale_color_discrete(name = "Income Quintile")
 
 
 
 ## Housing price increase
 
 # By month
-ggplot(data = housing_price_increase, aes(x = REF_DATE, y = Increased.ratio.compared.to.Dec.2016)) + geom_line(col = "blue") + geom_point(col = "blue") + 
-  xlab("Month") + ylab("Increase in Housing Price Index Comparing to December 2016") + ggtitle("Line graph of Increase in Housing Price Index by Month") +
+housing_price_increase %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = REF_DATE, y = Increased.ratio.compared.to.Dec.2016, col = covid)) + geom_line() + geom_point() + 
+  xlab("Month") + ylab("Increase in Housing Price Index Comparing to December 2016") + 
+  ggtitle("Trend of Increase in Housing Price Index by Month") +
   scale_x_continuous(breaks = housing_price_increase$REF_DATE) +  # Ensure every label is shown
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38")) + 
   theme(axis.text.x = element_text(angle = 90, hjust = 2))
 
 # By year
@@ -268,6 +372,25 @@ population_change %>%
   xlab("Year") + ylab("Count") + ggtitle("Line graph of Population Change in Canada over Time") +
   scale_color_discrete(name = "Components of population change")
 
+
+## diesel
+diesel %>% 
+  ggplot(aes(x = Province, y = VALUE, colour = Province)) + geom_boxplot() +
+  xlab("Province") + ylab("Diesel Fuel Price (in Cents per Litre)") + ggtitle("Boxplot of Diesel Fuel Prices by Province") + 
+  theme(legend.position = "none")
+
+diesel %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = REF_DATE, y = VALUE, group = covid, colour = covid)) + geom_line() + geom_point() + 
+  xlab("Month") + ylab("Gas Price (Cents per Litre)") + ggtitle("Line Graph of Canadian Gas Prices by Month and COVID Periods") + 
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
+
+
+## HFCE
+HFCE %>% 
+  ggplot(aes(x = Province, y = VALUE, colour = Province)) + geom_boxplot() +
+  xlab("Province") + ylab("Household Heating Fuel Prices (in Cents per Litre)") + ggtitle("Boxplot of Household Heating Fuel Prices by Province") + 
+  theme(legend.position = "none")
 
 
 ##################
