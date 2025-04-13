@@ -4,8 +4,8 @@ To run our codes, the 4.4.3 version of R and 2024.12.1-563 version of RStudio or
 
 Here are the links to the required versions of R and RStudio:
 
-R: https://cran.r-project.org/bin/windows/base/old/4.4.3/ (for Windows)
-RStudio: https://posit.co/download/rstudio-desktop/ (please download the file for your OS)
+- R: https://cran.r-project.org/bin/windows/base/old/4.4.3/ (for Windows)
+- RStudio: https://posit.co/download/rstudio-desktop/ (please download the file for your OS)
 
 Below are the links to the original datasets we used for this project. The specific parameters and timeframe should have already been specified for each dataset:
 
