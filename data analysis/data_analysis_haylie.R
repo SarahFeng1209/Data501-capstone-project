@@ -4,9 +4,8 @@
 install.packages("readxl")
 install.packages("lme4")
 install.packages("tidyverse")
-install.packages("summarytools")
+# install.packages("summarytools")
 install.packages("psych")
-install.packages("corrplot")
 install.packages("ggpubr")
 install.packages("sjPlot")
 
@@ -14,7 +13,7 @@ install.packages("sjPlot")
 # Load packages
 library(tidyverse) # for data cleaning and manipulation
 library(readxl) # for reading xlsx files
-library(summarytools) # to obtain frequency tables when checking for numbers and number of categories for a variable (column)
+# library(summarytools) # to obtain frequency tables when checking for numbers and number of categories for a variable (column)
 library(lme4) # for multilevel regression model
 library(psych) # for correlation analysis
 library(ggpubr) # for visualizing correlation
@@ -121,26 +120,6 @@ cpi_combined <- cpi_combined %>%
   rename(REF_DATE = X) %>% 
   mutate(REF_DATE = as.Date(ym(REF_DATE)))
 
-# # Add average diesel prices into cpi_combined data frame
-# Average.diesel.prices <- diesel %>% 
-#   group_by(REF_DATE) %>% 
-#   summarise(Average.diesel.prices = mean(VALUE, na.rm = T)) %>% 
-#   # Change object type
-#   mutate(REF_DATE = as.Date(ymd(REF_DATE))) %>% 
-#   ungroup()
-# 
-# cpi_combined <- left_join(cpi_combined, Average.diesel.prices, by = "REF_DATE")
-# 
-# # Add average household heating fuel prices into cpi_combined data frame
-# Average.HFCE <- household_heating_fuel %>% 
-#   group_by(REF_DATE) %>% 
-#   summarise(Average.HFCE = mean(VALUE, na.rm = T)) %>% 
-#   # Change object type
-#   mutate(REF_DATE = as.Date(ymd(REF_DATE))) %>% 
-#   ungroup()
-# 
-# cpi_combined <- left_join(cpi_combined, Average.HFCE, by = "REF_DATE")
-
 
 # Merge dataframe
 
@@ -208,6 +187,12 @@ kruskal.test(CPI.median ~ covid, data = cpi_main)
 # Test-statistic = 43.818, degrees of freedom = 2, p < 0.001
 # This means that inflation rate differs significantly across the 3 COVID periods
 
+cpi_main %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = covid, y = CPI.median, color = covid)) + geom_boxplot() +
+  xlab("COVID periods") + ylab("CPI Median") + ggtitle("Boxplot of CPI Median across COVID periods") + 
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
+
 
 #### **This RQ can be paired with a visualization to answer**
 
@@ -224,10 +209,13 @@ kruskal.test(CPI.median ~ covid, data = cpi_main)
 # Revenues
 
 # First, visualization (also available in EDA)
-ggplot(data = cpi_main, aes(x = REF_DATE, y = B..Revenues, color = covid, group = covid)) + geom_point() + geom_line() + 
-  xlab("Month") + ylab("Revenues") + 
+cpi_main %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = REF_DATE, y = B..Revenues, color = covid, group = covid)) + geom_point() + geom_line() + 
+  xlab("Month") + ylab("Revenues (in million dollars)") + 
   ggtitle("Trend of Government Revenues by Month") + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 # From the visualization, we can see an overall increasing trend in government revenues over time
 
 
@@ -814,11 +802,20 @@ summary(postcovid_gas_log) # non-sig
 
 
 # First, visualization (also available in EDA)
-ggplot(data = cpi_main, aes(x = REF_DATE, y = Disel.fuel.at.self.service, color = covid, group = covid)) + geom_point() + geom_line() +
-  xlab("Month") + ylab("Diesel Price (Cents per Litre)") + 
-  ggtitle("Trend of Diesel Price by Month") + 
-  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+cpi_main %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = REF_DATE, y = Disel.fuel.at.self.service, color = covid, group = covid)) + geom_point() + geom_line() +
+  xlab("Month") + ylab("Total Diesel Price (Cents per Litre)") + 
+  ggtitle("Trend of Total Diesel Price by Month") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 # From the visualization, we can see that there are 3 distinct trends identified across the 3 periods relative to COVID
+
+diesel %>% 
+  mutate(covid = factor(covid, levels = c("Pre-COVID", "COVID", "Post-COVID"))) %>% 
+  ggplot(aes(x = REF_DATE, y = VALUE, group = covid, colour = covid)) + geom_line() + geom_point() + 
+  xlab("Month") + ylab("Gas Price (Cents per Litre)") + ggtitle("Line Graph of Canadian Gas Prices by Month and COVID Periods") + 
+  scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 
 
 # Diesel
