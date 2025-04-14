@@ -194,6 +194,9 @@ cpi_main %>%
   scale_color_manual(name = "COVID Periods", values = c("Pre-COVID" = "#619CFF", "COVID" = "#F8766D", "Post-COVID" = "#00BA38"))
 
 
+# Compare means
+favstats(~CPI.median|covid, data = cpi_main)
+
 #### **This RQ can be paired with a visualization to answer**
 
 
